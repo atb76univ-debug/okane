@@ -85,6 +85,10 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
   <h2>今月のまとめ</h2>
   <div class="row"><span>仕送り（使った / 月額）</span><b id="aLbl"></b></div>
   <div class="bar"><i id="aBar"></i></div>
+
+  <div class="row"><span>バイト代（使った / 月額）</span><b id="bLbl"></b></div>
+  <div class="bar"><i id="bBar"></i></div>
+  
   <div class="row"><span>バイト代：サブスク</span><b id="subT"></b></div>
   <div class="row"><span>バイト代：その他の支出</span><b id="bSp"></b></div>
   <div class="row"><span>貯金（先月までの繰り越し）</span><b id="save" class="save"></b></div>
@@ -174,7 +178,15 @@ function render(){
   const bl=$('bLeft');bl.textContent=yen(c.bLeft);bl.classList.toggle('neg',c.bLeft<0);
   $('aLbl').textContent=`${yen(c.aAll)} / ${yen(S.allow)}`;
   $('aBar').style.width=Math.min(100,Math.max(0,c.aAll/S.allow*100||0))+'%';
-  $('subT').textContent=yen(subTotal());$('bSp').textContent=yen(c.bSp);$('save').textContent=yen(c.saving);
+  $('subT').textContent=yen(subTotal());
+  $('bSp').textContent=yen(c.bSp);
+  $('save').textContent=yen(c.saving);
+  
+  // バイト代の使用額・使用率
+  const bUsed = subTotal() + c.bSp;
+  $('bLbl').textContent = `${yen(bUsed)} / ${yen(S.baito)}`;
+  $('bBar').style.width = Math.min(100, Math.max(0, bUsed / S.baito * 100 || 0)) + '%';
+  
   $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(rowHtml).join('')||'<p class="note">まだ記録がありません</p>';
   $('subList').innerHTML=S.subs.map((s,i)=>`<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
 }
