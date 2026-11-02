@@ -188,7 +188,11 @@ function render(){
   // バイト代の使用額・使用率
   const bUsed = subTotal() + c.bSp;
   $('bLbl').textContent = `${yen(bUsed)} / ${yen(S.baito)}`;
-  $('bBar').style.width = Math.min(100, Math.max(0, bUsed / S.baito * 100 || 0)) + '%';
+  
+  const bBar = $('bBar');
+  bBar.style.width = Math.min(100, Math.max(0, bUsed / S.baito * 100 || 0)) + '%';
+  // 月額を超えたら赤色
+  bBar.classList.toggle('over', bUsed > S.baito);
   
   $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(rowHtml).join('')||'<p class="note">まだ記録がありません</p>';
   $('subList').innerHTML=S.subs.map((s,i)=>`<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
