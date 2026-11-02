@@ -32,43 +32,50 @@ button.x{background:none;color:var(--sub);padding:2px 8px;font-size:16px}
 .set label{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;padding:4px 0}
 .set input{flex:0 0 120px;text-align:right}
 .save{color:var(--ac)}
+.pend{background:rgba(255,170,0,.15);border-radius:8px}
+em{font-style:normal;font-size:11px;background:var(--ac);color:#fff;border-radius:6px;padding:1px 6px;margin-right:4px}
+button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two .big{font-size:26px}
 </style>
 </head>
 <body>
 <main>
-<h1>やりくり家計簿 <span id="sync">読み込み中…</span></h1>
-
+<h1>やりくり家計簿 <span id="sync">接続中…</span></h1>
 <div class="card hero">
   <div class="note" id="dateLbl"></div>
-  <div class="note">今日の食費、あと使える額</div>
+  <div class="note">今日の仕送り、あと使える額</div>
   <div class="big" id="todayLeft">-</div>
   <div class="note" id="dailyInfo"></div>
 </div>
-
+<div class="two">
+  <div class="card hero"><div class="note">仕送りの残り</div><div class="big" id="aLeft"></div></div>
+  <div class="card hero"><div class="note">バイト代の残り</div><div class="big" id="bLeft"></div></div>
+</div>
 <div class="card">
   <h2>支出を記録</h2>
   <form id="expForm">
     <input id="eAmt" type="number" inputmode="numeric" placeholder="金額" required>
-    <select id="eCat"><option value="food">食費</option><option value="other">その他</option></select>
+    <select id="eSrc"><option value="allow">仕送りから</option><option value="baito">バイト代から</option></select>
     <input id="eMemo" placeholder="メモ（任意）">
     <button>追加</button>
   </form>
-  <div id="expList" style="margin-top:8px"></div>
 </div>
-
+<div class="card">
+  <h2>今月の支出ログ（PayPay自動記録を含む）</h2>
+  <p class="note">PayPayの決済は、まず仕送りから引かれ「未確認」になります。ボタンで引き先を切り替えると確認済みになります。</p>
+  <div id="expList"></div>
+</div>
 <div class="card">
   <h2>今月のまとめ</h2>
-  <div class="row"><span>食費（使った / 予算）</span><b id="foodLbl"></b></div>
-  <div class="bar"><i id="foodBar"></i></div>
-  <div class="row"><span>収入（仕送り＋バイト）</span><b id="inc"></b></div>
-  <div class="row"><span>サブスク合計</span><b id="subT"></b></div>
-  <div class="row"><span>その他の支出</span><b id="otherT"></b></div>
-  <div class="row"><span>今月の残り（全体）</span><b id="remain"></b></div>
+  <div class="row"><span>仕送り（使った / 月額）</span><b id="aLbl"></b></div>
+  <div class="bar"><i id="aBar"></i></div>
+  <div class="row"><span>バイト代：サブスク</span><b id="subT"></b></div>
+  <div class="row"><span>バイト代：その他の支出</span><b id="bSp"></b></div>
   <div class="row"><span>貯金（先月までの繰り越し）</span><b id="save" class="save"></b></div>
 </div>
-
 <div class="card">
-  <h2>サブスク（毎月）</h2>
+  <h2>サブスク（毎月・バイト代から）</h2>
   <div id="subList"></div>
   <form id="subForm">
     <input id="sName" placeholder="サービス名" required>
@@ -76,130 +83,90 @@ button.x{background:none;color:var(--sub);padding:2px 8px;font-size:16px}
     <button>登録</button>
   </form>
 </div>
-
 <div class="card set">
   <h2>設定</h2>
-  <label>仕送り<input id="sAllow" type="number" inputmode="numeric"></label>
-  <label>バイト代<input id="sBaito" type="number" inputmode="numeric"></label>
-  <label>食費の月予算<input id="sFood" type="number" inputmode="numeric"></label>
-  <p class="note">毎月の余りは自動で貯金に繰り越されます。サブスク・食費以外の支出はバイト代側からやりくりする想定です。</p>
+  <label>仕送り（月額）<input id="sAllow" type="number" inputmode="numeric"></label>
+  <label>バイト代（月額）<input id="sBaito" type="number" inputmode="numeric"></label>
+  <p class="note">毎月の余り（仕送り＋バイト代−支出）は、自動で貯金に繰り越されます。</p>
 </div>
 </main>
-
 <script>
-const KEY='okozukai-v1';
-let S={allow:40000,baito:50000,food:40000,start:ym(new Date()),subs:[],exp:[],updated:0};
-let ref=null,ready=false;
+const KEY='okozukai-v2';
+const D=()=>({allow:40000,baito:50000,start:ym(new Date()),subs:[],exp:[],updated:0});
+let S=D();
 const $=id=>document.getElementById(id);
 const yen=n=>(n<0?'-':'')+'¥'+Math.abs(Math.round(n)).toLocaleString('ja-JP');
-function pad(n){return String(n).padStart(2,'0')}
+const pad=n=>String(n).padStart(2,'0');
 function ymd(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
 function ym(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const subTotal=()=>sum(S.subs.map(s=>s.amt));
+const srcOf=e=>e.src||(e.cat==='other'?'baito':'allow');
+const spent=(list,src)=>sum(list.filter(e=>srcOf(e)===src).map(e=>e.amt));
 
 function calc(){
   const now=new Date(),t=ymd(now),m=ym(now);
-  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const left=dim-now.getDate()+1;
+  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),left=dim-now.getDate()+1;
   const me=S.exp.filter(e=>e.date.startsWith(m));
-  const food=me.filter(e=>e.cat==='food');
-  const foodAll=sum(food.map(e=>e.amt));
-  const foodBefore=sum(food.filter(e=>e.date<t).map(e=>e.amt));
-  const foodToday=sum(food.filter(e=>e.date===t).map(e=>e.amt));
-  const daily=(S.food-foodBefore)/left;
-  const other=sum(me.filter(e=>e.cat!=='food').map(e=>e.amt));
-  const income=S.allow+S.baito;
-  // 貯金：開始月〜先月の余りを合算
+  const a=me.filter(e=>srcOf(e)==='allow');
+  const aAll=sum(a.map(e=>e.amt)),aBefore=sum(a.filter(e=>e.date<t).map(e=>e.amt)),aToday=aAll-aBefore;
+  const daily=(S.allow-aBefore)/left,bSp=spent(me,'baito');
   let saving=0;
   const [sy,sm]=S.start.split('-').map(Number);
   for(let k=sy*12+sm-1;k<now.getFullYear()*12+now.getMonth();k++){
-    const key=Math.floor(k/12)+'-'+pad(k%12+1);
-    saving+=income-subTotal()-sum(S.exp.filter(e=>e.date.startsWith(key)).map(e=>e.amt));
+    const key=Math.floor(k/12)+'-'+pad(k%12+1),l=S.exp.filter(e=>e.date.startsWith(key));
+    saving+=S.allow+S.baito-subTotal()-sum(l.map(e=>e.amt));
   }
-  return {t,dim,left,me,foodAll,foodToday,daily,other,income,saving,todayLeft:Math.floor(daily)-foodToday,m};
+  return {dim,left,me,aAll,aToday,daily,bSp,saving,todayLeft:Math.floor(daily)-aToday,bLeft:S.baito-subTotal()-bSp,aLeft:S.allow-aAll};
 }
-
 function render(){
   const c=calc(),now=new Date();
   $('dateLbl').textContent=`${now.getMonth()+1}月${now.getDate()}日（残り${c.left}日）`;
   const tl=$('todayLeft');tl.textContent=yen(c.todayLeft);tl.classList.toggle('neg',c.todayLeft<0);
-  $('dailyInfo').textContent=`今日の食費枠 ${yen(Math.floor(c.daily))}（基本 ${yen(S.food/c.dim)}／日）・今日使った ${yen(c.foodToday)}`;
-  $('foodLbl').textContent=`${yen(c.foodAll)} / ${yen(S.food)}`;
-  $('foodBar').style.width=Math.min(100,Math.max(0,c.foodAll/S.food*100||0))+'%';
-  $('inc').textContent=yen(c.income);
-  $('subT').textContent=yen(subTotal());
-  $('otherT').textContent=yen(c.other);
-  const rem=c.income-subTotal()-c.foodAll-c.other;
-  $('remain').textContent=yen(rem);$('remain').style.color=rem<0?'var(--bad)':'';
-  $('save').textContent=yen(c.saving);
-  $('expList').innerHTML=c.me.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id).slice(0,30).map(e=>
-    `<div class="row"><span>${e.date.slice(5).replace('-','/')} ${e.cat==='food'?'食費':'その他'} ${esc(e.memo||'')}</span><span>${yen(e.amt)} <button class="x" data-e="${e.id}">×</button></span></div>`).join('')||'<p class="note">まだ記録がありません</p>';
-  $('subList').innerHTML=S.subs.map((s,i)=>
-    `<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
+  $('dailyInfo').textContent=`今日の枠 ${yen(Math.floor(c.daily))}（基本 ${yen(S.allow/c.dim)}／日）・今日使った ${yen(c.aToday)}`;
+  const al=$('aLeft');al.textContent=yen(c.aLeft);al.classList.toggle('neg',c.aLeft<0);
+  const bl=$('bLeft');bl.textContent=yen(c.bLeft);bl.classList.toggle('neg',c.bLeft<0);
+  $('aLbl').textContent=`${yen(c.aAll)} / ${yen(S.allow)}`;
+  $('aBar').style.width=Math.min(100,Math.max(0,c.aAll/S.allow*100||0))+'%';
+  $('subT').textContent=yen(subTotal());$('bSp').textContent=yen(c.bSp);$('save').textContent=yen(c.saving);
+  $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(e=>{
+    const tm=e.ts?new Date(e.ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
+    return `<div class="row ${e.auto&&!e.chk?'pend':''}"><span>${e.date.slice(5).replace('-','/')} ${tm} ${e.auto?'<em>PayPay</em>':''}${esc(e.memo||'')}${e.auto&&!e.chk?' <small>未確認</small>':''}</span><span>${yen(e.amt)} <button class="t" data-t="${e.id}">${srcOf(e)==='allow'?'仕送り':'バイト代'}</button><button class="x" data-e="${e.id}">×</button></span></div>`}).join('')||'<p class="note">まだ記録がありません</p>';
+  $('subList').innerHTML=S.subs.map((s,i)=>`<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
 }
-function fillSettings(){
-  for(const [id,k] of [['sAllow','allow'],['sBaito','baito'],['sFood','food']])
-    if(document.activeElement!==$(id))$(id).value=S[k];
-}
-
-function setSync(t){$('sync').textContent=t}
+function fillSettings(){for(const [id,k] of [['sAllow','allow'],['sBaito','baito']])if(document.activeElement!==$(id))$(id).value=S[k]}
+const setSync=t=>$('sync').textContent=t;
 let pushT=null;
-function persist(){
-  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
-  clearTimeout(pushT);pushT=setTimeout(push,1500);
-}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}clearTimeout(pushT);pushT=setTimeout(push,1500)}
 function change(){S.updated=Date.now();render();persist()}
-function apply(o){
-  if(!o||typeof o!=='object')return;
-  S=Object.assign({allow:40000,baito:50000,food:40000,start:ym(new Date()),subs:[],exp:[],updated:0},o);
-  render();fillSettings();
-}
+function apply(o){if(o&&typeof o==='object'){S=Object.assign(D(),o);render();fillSettings()}}
 
-$('expForm').onsubmit=e=>{e.preventDefault();
-  const amt=Number($('eAmt').value);if(!amt)return;
-  S.exp.push({id:Date.now(),date:ymd(new Date()),amt,cat:$('eCat').value,memo:$('eMemo').value.trim()});
+$('expForm').onsubmit=e=>{e.preventDefault();const amt=Number($('eAmt').value);if(!amt)return;
+  S.exp.push({id:Date.now(),date:ymd(new Date()),ts:Date.now(),amt,src:$('eSrc').value,memo:$('eMemo').value.trim(),chk:true});
   $('eAmt').value='';$('eMemo').value='';change()};
-$('subForm').onsubmit=e=>{e.preventDefault();
-  S.subs.push({name:$('sName').value.trim(),amt:Number($('sAmt').value)||0});
-  $('sName').value='';$('sAmt').value='';change()};
-document.addEventListener('click',e=>{
-  const d=e.target.dataset;
+$('subForm').onsubmit=e=>{e.preventDefault();S.subs.push({name:$('sName').value.trim(),amt:Number($('sAmt').value)||0});$('sName').value='';$('sAmt').value='';change()};
+document.addEventListener('click',e=>{const d=e.target.dataset;
   if(d.e){S.exp=S.exp.filter(x=>String(x.id)!==d.e);change()}
   if(d.s){S.subs.splice(Number(d.s),1);change()}
-});
-for(const [id,k] of [['sAllow','allow'],['sBaito','baito'],['sFood','food']])
-  $(id).oninput=()=>{S[k]=Number($(id).value)||0;change()};
+  if(d.t){const x=S.exp.find(x=>String(x.id)===d.t);if(x){x.src=srcOf(x)==='allow'?'baito':'allow';x.chk=true;change()}}});
+for(const [id,k] of [['sAllow','allow'],['sBaito','baito']])$(id).oninput=()=>{S[k]=Number($(id).value)||0;change()};
 
-// 先にローカルのデータで表示
 try{const l=localStorage.getItem(KEY);if(l)apply(JSON.parse(l))}catch(e){}
-render();fillSettings();setSync('接続中…');
-
-// ===== 共有同期（このURLを開いた人は全員同じデータ） =====
+render();fillSettings();
 let busy=false;
 async function push(){
   if(busy)return;busy=true;
-  try{
-    const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});
-    if(!r.ok)throw 0;
-    const cur=await r.json();
+  try{const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});
+    if(!r.ok)throw 0;const cur=await r.json();
     if(cur&&(cur.updated||0)>(S.updated||0)){apply(cur);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
-    setSync('☁ 同期済み');
-  }catch(e){setSync('オフライン（この端末には保存済み）')}
-  busy=false;
-}
+    setSync('☁ 同期済み')}catch(e){setSync('オフライン（この端末には保存済み）')}
+  busy=false}
 async function pull(){
   if(busy)return;
-  try{
-    const r=await fetch('/api/state',{cache:'no-store'});
-    if(!r.ok)throw 0;
-    const remote=await r.json();
+  try{const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw 0;const remote=await r.json();
     if(remote&&(remote.updated||0)>(S.updated||0)){apply(remote);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}setSync('☁ 同期済み')}
-    else if(!remote||(remote.updated||0)<(S.updated||0))await push();
-    else setSync('☁ 同期済み');
-  }catch(e){setSync('オフライン（この端末には保存済み）')}
-}
+    else if(!remote||(remote.updated||0)<(S.updated||0))await push();else setSync('☁ 同期済み')}catch(e){setSync('オフライン（この端末には保存済み）')}}
 pull();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
 setInterval(()=>{if(!document.hidden)pull()},10000);
