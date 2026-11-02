@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#2f8f6b">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>やりくり家計簿</title>
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--tx:#1d2733;--sub:#6b7785;--ac:#2f8f6b;--bad:#d64545;--bd:#e1e6ea;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -170,6 +174,7 @@ async function pull(){
 pull();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
 setInterval(()=>{if(!document.hidden)pull()},10000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 </script>
 </body>
 </html>
