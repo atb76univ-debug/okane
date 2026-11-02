@@ -1,22 +1,16 @@
-# やりくり家計簿（Cloudflare Workers 版）
+# やりくり家計簿
 
-URLを開いた人は誰でも同じデータを見て編集できます（ログイン不要）。
-データは Cloudflare の Durable Object に1つだけ保存されます。無料プランで動きます。
+## PayPay の自動記録（Android）
+1. Cloudflare → Workers & Pages → money → Settings → Variables and Secrets → 追加
+   種類は **Secret**、名前 `PAY_KEY`、値は長い合言葉（例: ランダムな英数字20文字以上）。保存してデプロイ。
+2. Android に MacroDroid（または Tasker）を入れ、通知へのアクセスを許可。
+3. マクロを作成:
+   - トリガー: 通知を受信 → アプリ「PayPay」を選択
+   - アクション: HTTPリクエスト
+     - URL: `https://money.atb76-univ.workers.dev/api/pay?key=<PAY_KEY の値>`
+     - メソッド: POST / コンテンツタイプ: text/plain
+     - 本文: 通知のタイトルと本文を差し込む変数
+4. PayPay アプリで「支払いと入出金に関する取引」の通知をオンにする。
+5. 実際に少額を支払い、アプリの「支出ログ」に「PayPay・未確認」で出るか確認。
 
-## デプロイ
-1. Cloudflare アカウントを作成（無料）。
-2. このフォルダで実行:
-   ```
-   npm install -g wrangler   # または npx wrangler
-   npx wrangler login
-   npx wrangler deploy
-   ```
-3. 表示された `https://okozukai.<あなた>.workers.dev` をスマホ・PCで開けば同期されます。
-
-GitHub に置く場合は、このフォルダをリポジトリにして Cloudflare ダッシュボードの
-「Workers & Pages → Create → Import a repository」で連携すると、push のたびに自動デプロイされます。
-
-## 注意
-- URLを知っている人は誰でも閲覧・編集できます。他人に教えないでください。
-- 2台で同時に編集した場合は、後から保存した内容が残ります（10秒ごと・画面に戻った時に自動で最新を取得）。
-- 通信できない時はその端末に保存し、復帰後に同期します。
+URL の key は他人に教えないでください。決済は仕送りから引かれ、ログ上のボタンで仕送り／バイト代を切り替えると確認済みになります。
