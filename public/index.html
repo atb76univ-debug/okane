@@ -76,6 +76,11 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
   <p class="note">PayPayの決済は、まず仕送りから引かれ「未確認」になります。ボタンで引き先を切り替えると確認済みになります。</p>
   <div id="expList"></div>
 </div>
+<div class="card" id="skipCard" hidden>
+  <h2>取り込まなかったPayPay通知</h2>
+  <p class="note">支払い・送金と判断できなかった通知です。支出なら「支出にする」を押してください。</p>
+  <div id="skipList"></div>
+</div>
 <div class="card">
   <h2>今月のまとめ</h2>
   <div class="row"><span>仕送り（使った / 月額）</span><b id="aLbl"></b></div>
@@ -124,7 +129,7 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
 </main>
 <script>
 const KEY='okozukai-v2';
-const D=()=>({allow:40000,baito:50000,start:ym(new Date()),subs:[],exp:[],updated:0});
+const D=()=>({allow:40000,baito:50000,start:ym(new Date()),subs:[],exp:[],skip:[],updated:0});
 let S=D();
 const $=id=>document.getElementById(id);
 const yen=n=>(n<0?'-':'')+'¥'+Math.abs(Math.round(n)).toLocaleString('ja-JP');
@@ -154,9 +159,13 @@ function calc(){
 }
 function rowHtml(e){
     const tm=e.ts?new Date(e.ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
-    return `<div class="row ${e.auto&&!e.chk?'pend':''}"><span>${e.date.slice(5).replace('-','/')} ${tm} ${e.auto?'<em>PayPay</em>':''}${esc(e.memo||'')}${e.auto&&!e.chk?' <small>未確認</small>':''}</span><span>${yen(e.amt)} <button class="t" data-t="${e.id}">${srcOf(e)==='allow'?'仕送り':'バイト代'}</button><button class="x" data-e="${e.id}">×</button></span></div>`}
+    return `<div class="row ${e.auto&&!e.chk?'pend':''}"><span>${e.date.slice(5).replace('-','/')} ${tm} ${e.auto?'<em>'+(e.kind==='send'?'PayPay送金':'PayPay')+'</em>':''}${esc(e.memo||'')}${e.auto&&!e.chk?' <small>未確認</small>':''}</span><span>${yen(e.amt)} <button class="t" data-t="${e.id}">${srcOf(e)==='allow'?'仕送り':'バイト代'}</button><button class="x" data-e="${e.id}">×</button></span></div>`}
+function renderSkip(){
+  const l=S.skip||[];$('skipCard').hidden=!l.length;
+  $('skipList').innerHTML=l.map((k,i)=>`<div class="row"><span>${esc(k.text)}</span><span><button class="t" data-k="${i}">支出にする</button><button class="x" data-kx="${i}">×</button></span></div>`).join('');
+}
 function render(){
-  renderCal();
+  renderSkip();renderCal();
   const c=calc(),now=new Date();
   $('dateLbl').textContent=`${now.getMonth()+1}月${now.getDate()}日（残り${c.left}日）`;
   const tl=$('todayLeft');tl.textContent=yen(c.todayLeft);tl.classList.toggle('neg',c.todayLeft<0);
@@ -205,6 +214,9 @@ $('subForm').onsubmit=e=>{e.preventDefault();S.subs.push({name:$('sName').value.
 document.addEventListener('click',e=>{const d=e.target.dataset;
   if(d.e){S.exp=S.exp.filter(x=>String(x.id)!==d.e);change()}
   if(d.s){S.subs.splice(Number(d.s),1);change()}
+  if(d.kx){S.skip.splice(Number(d.kx),1);change()}
+  if(d.k){const k=S.skip[Number(d.k)];const m=k&&k.text.match(/([\d,]+)\s*円/);
+    if(m){S.exp.push({id:Date.now(),ts:Date.now(),date:ymd(new Date(k.ts)),amt:Number(m[1].replace(/,/g,'')),src:'allow',memo:'PayPay（手動確認）',chk:true});S.skip.splice(Number(d.k),1);change()}}
   if(d.d){sel=d.d;renderCal()}
   if(d.n){cmn+=Number(d.n);if(cmn<0){cmn=11;cy--}if(cmn>11){cmn=0;cy++}renderCal()}
   if(d.t){const x=S.exp.find(x=>String(x.id)===d.t);if(x){x.src=srcOf(x)==='allow'?'baito':'allow';x.chk=true;change()}}});
