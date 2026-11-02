@@ -39,6 +39,10 @@ button.x{background:none;color:var(--sub);padding:2px 8px;font-size:16px}
 .pend{background:rgba(255,170,0,.15);border-radius:8px}
 em{font-style:normal;font-size:11px;background:var(--ac);color:#fff;border-radius:6px;padding:1px 6px;margin-right:4px}
 button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button{flex:1;background:var(--card);color:var(--sub);border:1px solid var(--bd)}.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.nav b{font-size:16px}.nav button{padding:6px 14px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;font-size:12px}.cal .h{color:var(--sub);padding:2px 0}
+.cal button.d{background:var(--bg);color:var(--tx);border:1px solid var(--bd);padding:4px 0;min-height:52px;font-weight:400;font-size:13px;line-height:1.2;border-radius:8px}.cal button.d small{display:block;color:var(--bad);font-size:10px;min-height:12px}.cal button.d.today{border-color:var(--ac);font-weight:700}.cal button.d.sel{background:var(--ac);color:#fff}.cal button.d.sel small{color:#fff}.cal .e{min-height:52px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .two .big{font-size:26px}
 </style>
@@ -46,6 +50,8 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
 <body>
 <main>
 <h1>やりくり家計簿 <span id="sync">接続中…</span></h1>
+<div class="tabs"><button id="tHome" class="on">ホーム</button><button id="tCal">カレンダー</button></div>
+<div id="vHome">
 <div class="card hero">
   <div class="note" id="dateLbl"></div>
   <div class="note">今日の仕送り、あと使える額</div>
@@ -93,6 +99,28 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
   <label>バイト代（月額）<input id="sBaito" type="number" inputmode="numeric"></label>
   <p class="note">毎月の余り（仕送り＋バイト代−支出）は、自動で貯金に繰り越されます。</p>
 </div>
+</div>
+<div id="vCal" hidden>
+  <div class="card">
+    <div class="nav"><button data-n="-1">◀</button><b id="cTitle"></b><button data-n="1">▶</button></div>
+    <div class="cal" id="calGrid"></div>
+  </div>
+  <div class="card">
+    <h2>この月のまとめ</h2>
+    <div class="two">
+      <div><div class="note">仕送り</div>
+        <div class="row"><span>月額</span><b id="cAm"></b></div>
+        <div class="row"><span>使用額</span><b id="cAu"></b></div>
+        <div class="row"><span>残金</span><b id="cAr"></b></div></div>
+      <div><div class="note">バイト代（その他）</div>
+        <div class="row"><span>月額</span><b id="cBm"></b></div>
+        <div class="row"><span>使用額</span><b id="cBu"></b></div>
+        <div class="row"><span>残金</span><b id="cBr"></b></div></div>
+    </div>
+    <p class="note">バイト代の使用額にはサブスク（<span id="cSub"></span>）を含みます。</p>
+  </div>
+  <div class="card"><h2 id="dTitle">日を選ぶと、その日の支出が見られます</h2><div id="dList"></div></div>
+</div>
 </main>
 <script>
 const KEY='okozukai-v2';
@@ -100,7 +128,7 @@ const D=()=>({allow:40000,baito:50000,start:ym(new Date()),subs:[],exp:[],update
 let S=D();
 const $=id=>document.getElementById(id);
 const yen=n=>(n<0?'-':'')+'¥'+Math.abs(Math.round(n)).toLocaleString('ja-JP');
-const pad=n=>String(n).padStart(2,'0');
+function pad(n){return String(n).padStart(2,'0')}
 function ymd(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
 function ym(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -124,7 +152,11 @@ function calc(){
   }
   return {dim,left,me,aAll,aToday,daily,bSp,saving,todayLeft:Math.floor(daily)-aToday,bLeft:S.baito-subTotal()-bSp,aLeft:S.allow-aAll};
 }
+function rowHtml(e){
+    const tm=e.ts?new Date(e.ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
+    return `<div class="row ${e.auto&&!e.chk?'pend':''}"><span>${e.date.slice(5).replace('-','/')} ${tm} ${e.auto?'<em>PayPay</em>':''}${esc(e.memo||'')}${e.auto&&!e.chk?' <small>未確認</small>':''}</span><span>${yen(e.amt)} <button class="t" data-t="${e.id}">${srcOf(e)==='allow'?'仕送り':'バイト代'}</button><button class="x" data-e="${e.id}">×</button></span></div>`}
 function render(){
+  renderCal();
   const c=calc(),now=new Date();
   $('dateLbl').textContent=`${now.getMonth()+1}月${now.getDate()}日（残り${c.left}日）`;
   const tl=$('todayLeft');tl.textContent=yen(c.todayLeft);tl.classList.toggle('neg',c.todayLeft<0);
@@ -134,11 +166,31 @@ function render(){
   $('aLbl').textContent=`${yen(c.aAll)} / ${yen(S.allow)}`;
   $('aBar').style.width=Math.min(100,Math.max(0,c.aAll/S.allow*100||0))+'%';
   $('subT').textContent=yen(subTotal());$('bSp').textContent=yen(c.bSp);$('save').textContent=yen(c.saving);
-  $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(e=>{
-    const tm=e.ts?new Date(e.ts).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
-    return `<div class="row ${e.auto&&!e.chk?'pend':''}"><span>${e.date.slice(5).replace('-','/')} ${tm} ${e.auto?'<em>PayPay</em>':''}${esc(e.memo||'')}${e.auto&&!e.chk?' <small>未確認</small>':''}</span><span>${yen(e.amt)} <button class="t" data-t="${e.id}">${srcOf(e)==='allow'?'仕送り':'バイト代'}</button><button class="x" data-e="${e.id}">×</button></span></div>`}).join('')||'<p class="note">まだ記録がありません</p>';
+  $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(rowHtml).join('')||'<p class="note">まだ記録がありません</p>';
   $('subList').innerHTML=S.subs.map((s,i)=>`<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
 }
+let cy=new Date().getFullYear(),cmn=new Date().getMonth(),sel=ymd(new Date());
+function renderCal(){
+  const key=cy+'-'+pad(cmn+1),dim=new Date(cy,cmn+1,0).getDate(),first=new Date(cy,cmn,1).getDay();
+  const l=S.exp.filter(e=>e.date.startsWith(key));
+  $('cTitle').textContent=`${cy}年${cmn+1}月`;
+  let h=['日','月','火','水','木','金','土'].map(x=>`<div class="h">${x}</div>`).join('')+'<div class="e"></div>'.repeat(first);
+  for(let d=1;d<=dim;d++){
+    const ds=key+'-'+pad(d),t=sum(l.filter(e=>e.date===ds).map(e=>e.amt));
+    h+=`<button class="d ${ds===ymd(new Date())?'today':''} ${ds===sel?'sel':''}" data-d="${ds}">${d}<small>${t?t.toLocaleString('ja-JP'):''}</small></button>`;
+  }
+  $('calGrid').innerHTML=h;
+  const au=spent(l,'allow'),bu=spent(l,'baito')+subTotal();
+  $('cAm').textContent=yen(S.allow);$('cAu').textContent=yen(au);
+  $('cBm').textContent=yen(S.baito);$('cBu').textContent=yen(bu);$('cSub').textContent=yen(subTotal());
+  const ar=$('cAr'),br=$('cBr');ar.textContent=yen(S.allow-au);br.textContent=yen(S.baito-bu);
+  ar.style.color=S.allow-au<0?'var(--bad)':'';br.style.color=S.baito-bu<0?'var(--bad)':'';
+  const day=l.filter(e=>e.date===sel);
+  $('dTitle').textContent=sel.startsWith(key)?`${Number(sel.slice(5,7))}月${Number(sel.slice(8))}日の支出（合計 ${yen(sum(day.map(e=>e.amt)))}）`:'日を選ぶと、その日の支出が見られます';
+  $('dList').innerHTML=sel.startsWith(key)?(day.map(rowHtml).join('')||'<p class="note">この日の支出はありません</p>'):'';
+}
+function tab(c){$('vHome').hidden=c;$('vCal').hidden=!c;$('tHome').classList.toggle('on',!c);$('tCal').classList.toggle('on',c);if(c)renderCal()}
+$('tHome').onclick=()=>tab(false);$('tCal').onclick=()=>tab(true);
 function fillSettings(){for(const [id,k] of [['sAllow','allow'],['sBaito','baito']])if(document.activeElement!==$(id))$(id).value=S[k]}
 const setSync=t=>$('sync').textContent=t;
 let pushT=null;
@@ -153,6 +205,8 @@ $('subForm').onsubmit=e=>{e.preventDefault();S.subs.push({name:$('sName').value.
 document.addEventListener('click',e=>{const d=e.target.dataset;
   if(d.e){S.exp=S.exp.filter(x=>String(x.id)!==d.e);change()}
   if(d.s){S.subs.splice(Number(d.s),1);change()}
+  if(d.d){sel=d.d;renderCal()}
+  if(d.n){cmn+=Number(d.n);if(cmn<0){cmn=11;cy--}if(cmn>11){cmn=0;cy++}renderCal()}
   if(d.t){const x=S.exp.find(x=>String(x.id)===d.t);if(x){x.src=srcOf(x)==='allow'?'baito':'allow';x.chk=true;change()}}});
 for(const [id,k] of [['sAllow','allow'],['sBaito','baito']])$(id).oninput=()=>{S[k]=Number($(id).value)||0;change()};
 
