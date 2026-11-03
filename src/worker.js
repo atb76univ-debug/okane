@@ -19,15 +19,18 @@ export class Store {
       let kind = '';
       if (!/受け取|受取|チャージ|入金/.test(text)) {
         if (/送金|送りました|を送り/.test(text)) kind = 'send';
-        else if (/支払/.test(text)) kind = 'pay';
+        else if (/支払|取引が完了|取引番号/.test(text)) kind = 'pay';
       }
       if (!kind || !amt) {
         if (amt) { s.skip = [{ ts, text: text.slice(0, 200) }, ...(s.skip || [])].slice(0, 20); s.updated = ts; await this.state.storage.put('s', s); }
         return Response.json({ ignored: 'not a payment' });
       }
-      if (s.exp.some(e => e.auto && e.amt === amt && ts - e.ts < 120000)) return Response.json({ ignored: 'duplicate' });
+      // 「取引番号」付きの通知は確認済みとして記録し、取引番号で重複を判定する
+      const tx = text.match(/取引番号[:：]\s*(\S+)/);
+      const dup = tx ? s.exp.some(e => e.tx === tx[1]) : s.exp.some(e => e.auto && e.amt === amt && ts - e.ts < 120000);
+      if (dup) return Response.json({ ignored: 'duplicate' });
       const st = text.match(/店舗名[:：]\s*([^\n\r]+)/);
-      s.exp.push({ id: ts, ts, date: new Date(ts + 9 * 3600e3).toISOString().slice(0, 10), amt, src: 'allow', kind, memo: kind === 'send' ? '送金' : (st ? st[1].trim() : 'PayPay'), auto: true, chk: false, raw: text.slice(0, 200) });
+      s.exp.push({ id: ts, ts, date: new Date(ts + 9 * 3600e3).toISOString().slice(0, 10), amt, src: 'allow', kind, memo: kind === 'send' ? '送金' : (st ? st[1].trim() : 'PayPay'), auto: true, chk: !!tx, tx: tx ? tx[1] : undefined, raw: text.slice(0, 200) });
       s.updated = ts;
       await this.state.storage.put('s', s);
       return Response.json({ ok: true, kind, amt });
