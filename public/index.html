@@ -28,9 +28,6 @@ h1{font-size:18px;margin:4px 0 12px;display:flex;justify-content:space-between;a
 .row:last-child{border:0}
 .bar{height:10px;background:var(--bd);border-radius:6px;overflow:hidden;margin:10px 0 4px}
 .bar i{display:block;height:100%;background:var(--ac)}
-.bar i.over {
-  background: var(--bad);
-}
 form{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 input,select,button{font:inherit;padding:9px 10px;border-radius:9px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);min-width:0}
 input{flex:1 1 100px}
@@ -88,10 +85,6 @@ button.t{background:var(--bd);color:var(--tx);padding:3px 8px;font-size:12px}
   <h2>今月のまとめ</h2>
   <div class="row"><span>仕送り（使った / 月額）</span><b id="aLbl"></b></div>
   <div class="bar"><i id="aBar"></i></div>
-
-  <div class="row"><span>バイト代（使った / 月額）</span><b id="bLbl"></b></div>
-  <div class="bar"><i id="bBar"></i></div>
-  
   <div class="row"><span>バイト代：サブスク</span><b id="subT"></b></div>
   <div class="row"><span>バイト代：その他の支出</span><b id="bSp"></b></div>
   <div class="row"><span>貯金（先月までの繰り越し）</span><b id="save" class="save"></b></div>
@@ -181,19 +174,7 @@ function render(){
   const bl=$('bLeft');bl.textContent=yen(c.bLeft);bl.classList.toggle('neg',c.bLeft<0);
   $('aLbl').textContent=`${yen(c.aAll)} / ${yen(S.allow)}`;
   $('aBar').style.width=Math.min(100,Math.max(0,c.aAll/S.allow*100||0))+'%';
-  $('subT').textContent=yen(subTotal());
-  $('bSp').textContent=yen(c.bSp);
-  $('save').textContent=yen(c.saving);
-  
-  // バイト代の使用額・使用率
-  const bUsed = subTotal() + c.bSp;
-  $('bLbl').textContent = `${yen(bUsed)} / ${yen(S.baito)}`;
-  
-  const bBar = $('bBar');
-  bBar.style.width = Math.min(100, Math.max(0, bUsed / S.baito * 100 || 0)) + '%';
-  // 月額を超えたら赤色
-  bBar.classList.toggle('over', bUsed > S.baito);
-  
+  $('subT').textContent=yen(subTotal());$('bSp').textContent=yen(c.bSp);$('save').textContent=yen(c.saving);
   $('expList').innerHTML=c.me.slice().sort((a,b)=>(b.ts||b.id)-(a.ts||a.id)).slice(0,60).map(rowHtml).join('')||'<p class="note">まだ記録がありません</p>';
   $('subList').innerHTML=S.subs.map((s,i)=>`<div class="row"><span>${esc(s.name)}</span><span>${yen(s.amt)} <button class="x" data-s="${i}">×</button></span></div>`).join('')||'<p class="note">未登録</p>';
 }
@@ -231,9 +212,9 @@ $('expForm').onsubmit=e=>{e.preventDefault();const amt=Number($('eAmt').value);i
   $('eAmt').value='';$('eMemo').value='';change()};
 $('subForm').onsubmit=e=>{e.preventDefault();S.subs.push({name:$('sName').value.trim(),amt:Number($('sAmt').value)||0});$('sName').value='';$('sAmt').value='';change()};
 document.addEventListener('click',e=>{const d=e.target.dataset;
-  if(d.e){S.exp=S.exp.filter(x=>String(x.id)!==d.e);change()}
-  if(d.s){S.subs.splice(Number(d.s),1);change()}
-  if(d.kx){S.skip.splice(Number(d.kx),1);change()}
+  if(d.e){const x=S.exp.find(x=>String(x.id)===d.e);if(!confirm(`この支出を削除しますか？\n${x?yen(x.amt)+' '+(x.memo||''):''}\n（元に戻せません）`))return;S.exp=S.exp.filter(x=>String(x.id)!==d.e);change()}
+  if(d.s){const x=S.subs[Number(d.s)];if(!confirm(`サブスク「${x?x.name:''}」を削除しますか？`))return;S.subs.splice(Number(d.s),1);change()}
+  if(d.kx){if(!confirm('この通知を一覧から消しますか？'))return;S.skip.splice(Number(d.kx),1);change()}
   if(d.k){const k=S.skip[Number(d.k)];const m=k&&k.text.match(/([\d,]+)\s*円/);
     if(m){S.exp.push({id:Date.now(),ts:Date.now(),date:ymd(new Date(k.ts)),amt:Number(m[1].replace(/,/g,'')),src:'allow',memo:'PayPay（手動確認）',chk:true});S.skip.splice(Number(d.k),1);change()}}
   if(d.d){sel=d.d;renderCal()}
